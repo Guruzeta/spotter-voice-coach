@@ -63,6 +63,36 @@ TOOLS = [
     },
     {
         "type": "client",
+        "name": "update_todo",
+        "description": "Change the status of one item on the researcher's to-do list (shown live on screen and saved to TODO.md). Returns the updated list.",
+        "expects_response": True,
+        "response_timeout_secs": 10,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer", "description": "To-do id from the list."},
+                "status": {"type": "string", "enum": ["in_progress", "done", "skipped", "open"], "description": "New status."},
+                "finding": {"type": "string", "description": "For done: one sentence with the verified answer and key numbers. Otherwise empty."},
+            },
+            "required": ["id", "status"],
+        },
+    },
+    {
+        "type": "client",
+        "name": "add_todo",
+        "description": "Add a new open question to the researcher's to-do list when they ask to note something for later.",
+        "expects_response": True,
+        "response_timeout_secs": 10,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {"text": {"type": "string", "description": "The question, phrased briefly."}},
+            "required": ["text"],
+        },
+    },
+    {
+        "type": "client",
         "name": "save_report",
         "description": "Save a markdown report of the findings (figures from this session are attached automatically) into the researcher's repo.",
         "expects_response": True,
@@ -124,7 +154,7 @@ def main():
             "name": "Talk to your experiment",
             "conversation_config": {
                 "agent": {
-                    "first_message": "Hey, it's Sam. I've got your experiment folder open. What do you want to look at?",
+                    "first_message": "Hey, it's Sam. I've got your experiment and your to-do list open. Give me one second.",
                     "language": "en",
                     "prompt": {
                         "prompt": (REPO / "agent" / "prompt.md").read_text(),

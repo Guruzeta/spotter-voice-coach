@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import todos
 from sandbox import PLOTS_DIR, ExperimentSandbox, experiment_overview
 
 load_dotenv(find_dotenv(usecwd=True))
@@ -61,7 +62,44 @@ def warmup():
 
 @app.get("/api/experiment")
 def experiment():
-    return {"overview": experiment_overview()}
+    return {
+        "overview": experiment_overview() + "\n\n=== RESEARCHER'S TO-DO LIST (id. [status] question) ===\n" + todos.as_text(),
+        "todos": todos.list_todos(),
+    }
+
+
+@app.get("/api/todos")
+def get_todos():
+    return {"todos": todos.list_todos()}
+
+
+class TodoUpdate(BaseModel):
+    id: int
+    status: str
+    finding: str = ""
+
+
+@app.post("/api/todos/update")
+def update_todo(req: TodoUpdate):
+    try:
+        items = todos.update_todo(req.id, req.status, req.finding)
+    except ValueError as e:
+        return {"error": str(e), "todos": todos.list_todos()}
+    return {"todos": items}
+
+
+class TodoAdd(BaseModel):
+    text: str
+
+
+@app.post("/api/todos/add")
+def add_todo(req: TodoAdd):
+    return {"todos": todos.add_todo(req.text)}
+
+
+@app.post("/api/todos/reset")
+def reset_todos():
+    return {"todos": todos.reset_todos()}
 
 
 class RunRequest(BaseModel):
@@ -96,6 +134,7 @@ def report(req: ReportRequest):
         if src.exists():
             shutil.copy(src, folder / src.name)
             images.append(src.name)
+    body += "\n\n## To-do status\n\n" + todos.as_markdown()
     if images:
         body += "\n\n## Figures\n\n" + "\n\n".join(f"![]({name})" for name in images)
     (folder / "report.md").write_text(f"# {req.title}\n\n{body}\n")

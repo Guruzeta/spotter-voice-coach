@@ -48,6 +48,39 @@ function showPlots(urls) {
   }
 }
 
+const TODO_ICON = { open: "☐", in_progress: "◐", done: "☑", skipped: "⊘" };
+let prevTodos = {};
+
+function renderTodos(todos = []) {
+  const ul = $("todos");
+  ul.innerHTML = todos.length ? "" : `<li class="empty">No to-dos.</li>`;
+  for (const t of todos) {
+    const li = document.createElement("li");
+    li.className = t.status;
+    if (prevTodos[t.id] && prevTodos[t.id] !== t.status) li.classList.add("flash");
+    li.innerHTML = `<span class="box">${TODO_ICON[t.status]}</span><span class="text"></span>`;
+    li.querySelector(".text").textContent = t.text;
+    if (t.finding) {
+      const f = document.createElement("span");
+      f.className = "finding";
+      f.textContent = t.finding;
+      li.appendChild(f);
+    }
+    ul.appendChild(li);
+  }
+  prevTodos = Object.fromEntries(todos.map((t) => [t.id, t.status]));
+  const open = todos.filter((t) => t.status === "open" || t.status === "in_progress").length;
+  $("todo-count").textContent = todos.length ? `${todos.length - open}/${todos.length} cleared` : "";
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return r.json();
+}
+
+fetch("/api/todos").then((r) => r.json()).then((d) => renderTodos(d.todos));
+$("todo-reset").onclick = async () => renderTodos((await postJSON("/api/todos/reset", {})).todos);
+
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 // ---------- Client tools (called by the ElevenLabs agent mid-conversation) ----------
@@ -56,8 +89,24 @@ const clientTools = {
     const li = logActivity("Reading experiment folder…", "running");
     const r = await fetch("/api/experiment").then((x) => x.json());
     li.className = "done";
-    li.textContent = "Read experiment folder";
+    li.textContent = "Read experiment folder and to-do list";
+    renderTodos(r.todos);
     return r.overview;
+  },
+
+  async update_todo({ id, status, finding = "" }) {
+    const r = await postJSON("/api/todos/update", { id: Number(id), status, finding });
+    renderTodos(r.todos);
+    if (r.error) return `Error: ${r.error}`;
+    logActivity(`To-do ${id} → ${status.replace("_", " ")}`, "done");
+    return `To-do ${id} is now ${status}. Current list:\n` + r.todos.map((t) => `${t.id}. [${t.status}] ${t.text}`).join("\n");
+  },
+
+  async add_todo({ text = "" }) {
+    const r = await postJSON("/api/todos/add", { text });
+    renderTodos(r.todos);
+    logActivity(`Added to-do: ${escapeHtml(text)}`, "done");
+    return `Added as to-do ${r.todos.length}.`;
   },
 
   async run_analysis({ purpose = "", code = "" }) {

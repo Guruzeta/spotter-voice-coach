@@ -107,6 +107,8 @@ def experiment_overview() -> str:
     files = sorted(p.relative_to(EXPERIMENT_DIR).as_posix() for p in EXPERIMENT_DIR.rglob("*") if p.is_file())
     parts.append("FILES:\n" + "\n".join(f"- {f}" for f in files))
     for p in sorted(EXPERIMENT_DIR.glob("*.md")) + sorted(EXPERIMENT_DIR.glob("*.csv")):
+        if p.name == "TODO.md":  # served separately as a structured list
+            continue
         parts.append(f"=== {p.name} ===\n{p.read_text()}")
     sample = next(iter(sorted(EXPERIMENT_DIR.glob("*/*.csv"))), None)
     if sample:
