@@ -73,13 +73,45 @@ main {
   padding: 10px 16px; border-bottom: 1px solid var(--line); color: var(--muted);
 }
 .caption { color: var(--ink); font-weight: 600; flex: 1; }
+/* The whiteboard stays a white board in both themes, like the real thing. */
+.surface {
+  position: relative; flex: 1; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+  background-color: #fdfdfb;
+  background-image:
+    linear-gradient(rgba(31, 58, 147, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 58, 147, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+  border-radius: 0 0 12px 12px;
+  color: #1b1b1b;
+  transition: opacity 0.3s;
+}
+.surface.erasing .diagram, .surface.erasing .notes { opacity: 0; filter: blur(3px); transition: all 0.3s; }
+.hand, .agenda, .notes { font-family: Caveat, "Comic Sans MS", cursive; }
 .diagram {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  padding: 24px; overflow: auto;
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  padding: 24px 24px 8px;
 }
 .diagram svg { max-width: 100%; max-height: 100%; height: auto; }
-.diagram.fresh svg { animation: pop 0.35s ease-out; }
-@keyframes pop { from { opacity: 0.3; transform: scale(0.98); } to { opacity: 1; transform: none; } }
+.diagram .empty { font-size: 26px; color: #9a988f; }
+.agenda {
+  position: absolute; top: 12px; left: 16px; z-index: 2; margin: 0; padding: 0; list-style: none;
+  font-size: 22px; line-height: 1.15; color: #6b6a66; max-width: 34%;
+}
+.agenda li.now { color: #b3261e; font-weight: 700; }
+.agenda li.past { color: #1f8a4c; }
+.notes { padding: 0 28px 16px; font-size: 30px; line-height: 1.2; color: #b3261e; min-height: 0; }
+.note { white-space: pre-wrap; }
+.pen {
+  position: absolute; left: 0; top: 0; z-index: 3; font-size: 30px; color: #1f3a93;
+  pointer-events: none; opacity: 0;
+  transition: transform 0.35s ease-out, opacity 0.3s;
+}
+.pen.active { opacity: 1; }
+
+.modes { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.modes button.mode { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 8px 12px; }
+.modes button.mode.selected { background: var(--line); color: var(--ink); font-weight: 600; }
 
 aside { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
 .panel { padding: 12px 16px; }

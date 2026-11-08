@@ -60,10 +60,20 @@ def warmup():
     return {"ok": True}
 
 
+MODES = {
+    "todo": "SESSION MODE: TODO — work through the researcher's to-do list together (see 'Mode: to-do list').",
+    "walkthrough": "SESSION MODE: WALKTHROUGH — present the whole experiment section by section like a grad student to an advisor (see 'Mode: walkthrough').",
+}
+
+
 @app.get("/api/experiment")
-def experiment():
+def experiment(mode: str = "todo"):
     return {
-        "overview": experiment_overview() + "\n\n=== RESEARCHER'S TO-DO LIST (id. [status] question) ===\n" + todos.as_text(),
+        "overview": MODES.get(mode, MODES["todo"])
+        + "\n\n"
+        + experiment_overview()
+        + "\n\n=== RESEARCHER'S TO-DO LIST (id. [status] question) ===\n"
+        + todos.as_text(),
         "todos": todos.list_todos(),
     }
 

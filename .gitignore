@@ -7,3 +7,4 @@ dist/
 .claude/
 backend/static/plots/*
 !backend/static/plots/.gitkeep
+scripts/board_shots/

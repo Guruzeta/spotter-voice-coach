@@ -1,15 +1,28 @@
 import { Conversation } from "@elevenlabs/client";
-import mermaid from "mermaid";
-
-mermaid.initialize({ startOnLoad: false, theme: "neutral", look: "handDrawn", securityLevel: "strict" });
+import * as board from "./board.js";
 
 const $ = (id) => document.getElementById(id);
 const startBtn = $("start");
 const recordBtn = $("record");
 
 let conversation = null;
-let sketchCount = 0;
 const sessionPlots = [];
+if (import.meta.env.DEV) window.board = board; // lets you try the whiteboard from the console
+
+// ---------- mode switch ----------
+let mode = "todo";
+try {
+  mode = localStorage.getItem("mode") || "todo";
+} catch {}
+function setMode(m) {
+  mode = m;
+  try {
+    localStorage.setItem("mode", m);
+  } catch {}
+  document.querySelectorAll(".mode").forEach((b) => b.classList.toggle("selected", b.dataset.mode === m));
+}
+document.querySelectorAll(".mode").forEach((b) => (b.onclick = () => !conversation && setMode(b.dataset.mode)));
+setMode(mode);
 
 // ---------- UI helpers ----------
 function setStatus(text, live = false) {
@@ -87,7 +100,7 @@ const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt
 const clientTools = {
   async get_experiment_overview() {
     const li = logActivity("Reading experiment folder…", "running");
-    const r = await fetch("/api/experiment").then((x) => x.json());
+    const r = await fetch(`/api/experiment?mode=${mode}`).then((x) => x.json());
     li.className = "done";
     li.textContent = "Read experiment folder and to-do list";
     renderTodos(r.todos);
@@ -135,20 +148,25 @@ const clientTools = {
 
   async sketch({ mermaid: code = "", caption = "" }) {
     try {
-      const { svg } = await mermaid.render(`sketch${++sketchCount}`, code);
-      const board = $("diagram");
-      board.innerHTML = svg;
-      board.classList.remove("fresh");
-      void board.offsetWidth;
-      board.classList.add("fresh");
-      $("caption").textContent = caption;
-      $("step").textContent = `step ${sketchCount}`;
-      return "Drawn on the whiteboard.";
+      const n = await board.sketch(code, caption);
+      $("step").textContent = `sketch ${n}`;
+      return "Drawing it on the whiteboard now (new parts animate in). Talk about the new part.";
     } catch (e) {
-      document.querySelectorAll(`[id^="dsketch"]`).forEach((n) => n.remove()); // mermaid error leftovers
+      document.querySelectorAll(`[id^="dsketch"]`).forEach((el) => el.remove()); // mermaid error leftovers
       logActivity("Sketch had a syntax error; agent is retrying", "error");
       return `Mermaid syntax error: ${String(e?.message || e).slice(0, 300)}. Simplify and retry.`;
     }
+  },
+
+  async write_on_board({ text = "" }) {
+    board.write(String(text).slice(0, 80));
+    return "Writing it on the board.";
+  },
+
+  async show_agenda({ items = "", current = 1 }) {
+    const list = (Array.isArray(items) ? items : String(items).split("|")).map((s) => s.trim()).filter(Boolean);
+    board.agenda(list, Number(current) || 1);
+    return `Agenda on the board; now on section ${current} of ${list.length}.`;
   },
 
   async save_report({ title = "Experiment report", markdown = "" }) {

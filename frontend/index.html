@@ -14,6 +14,10 @@
         <span id="mode" class="pill subtle"></span>
       </div>
       <div class="actions">
+        <div class="modes" role="radiogroup" aria-label="Call mode">
+          <button data-mode="todo" class="mode" title="Work through your open questions together">To-do list</button>
+          <button data-mode="walkthrough" class="mode" title="Sam presents the experiment; you ask questions like an advisor">Walkthrough</button>
+        </div>
         <button id="record" class="secondary" title="Record this tab (board + voices) as an explainer video">● Record explainer</button>
         <button id="start">Start call</button>
       </div>
@@ -26,7 +30,12 @@
           <span id="caption" class="caption"></span>
           <span id="step" class="pill subtle"></span>
         </div>
-        <div id="diagram" class="diagram"><p class="empty">Sketches appear here as Sam explains.</p></div>
+        <div id="surface" class="surface">
+          <ol id="agenda" class="agenda" hidden></ol>
+          <div id="diagram" class="diagram"><p class="empty hand">Sam draws here while explaining…</p></div>
+          <div id="notes" class="notes"></div>
+          <div id="pen" class="pen" aria-hidden="true">✎</div>
+        </div>
       </section>
 
       <aside>

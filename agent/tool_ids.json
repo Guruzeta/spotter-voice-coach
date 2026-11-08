@@ -2,6 +2,8 @@
   "get_experiment_overview": "tool_2101m6yhbhnqen0b0kd76xp75vj5",
   "run_analysis": "tool_2901m6yhbhrpe09vdwz735hkkykp",
   "sketch": "tool_4701m6yhbhvhem9a4d4w2qegv0xe",
+  "write_on_board": "tool_5301m6yjzagqf3xv1ehtfrn1an2y",
+  "show_agenda": "tool_9601m6yjzamzfpdav5mqy6q4hqxf",
   "update_todo": "tool_6001m6yj066nfe4b8xckjqzy8jan",
   "add_todo": "tool_4501m6yj06bdf9n80t5m1vb35qsn",
   "save_report": "tool_1401m6yhbhy4ec0r361h0pq7bd6q"

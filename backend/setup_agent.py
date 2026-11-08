@@ -63,6 +63,33 @@ TOOLS = [
     },
     {
         "type": "client",
+        "name": "write_on_board",
+        "description": "Handwrite one short line on the whiteboard under the diagram: an equation, a key number, or a takeaway. Use unicode math (π, √, ≈, ², →).",
+        "expects_response": False,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {"text": {"type": "string", "description": "At most ~50 characters, e.g. 'T = 2π√(m/k) ≈ 6.28'."}},
+            "required": ["text"],
+        },
+    },
+    {
+        "type": "client",
+        "name": "show_agenda",
+        "description": "Write the walkthrough agenda in the corner of the whiteboard and mark which section you're on.",
+        "expects_response": False,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "items": {"type": "string", "description": "Section titles separated by ' | ', 2-4 words each, e.g. 'The question | The setup | Energy drift | Stability | Takeaways'."},
+                "current": {"type": "integer", "description": "1-based index of the section you're presenting now."},
+            },
+            "required": ["items", "current"],
+        },
+    },
+    {
+        "type": "client",
         "name": "update_todo",
         "description": "Change the status of one item on the researcher's to-do list (shown live on screen and saved to TODO.md). Returns the updated list.",
         "expects_response": True,
@@ -154,7 +181,7 @@ def main():
             "name": "Talk to your experiment",
             "conversation_config": {
                 "agent": {
-                    "first_message": "Hey, it's Sam. I've got your experiment and your to-do list open. Give me one second.",
+                    "first_message": "Hey, it's Sam. I've got your experiment open. Ready when you are.",
                     "language": "en",
                     "prompt": {
                         "prompt": (REPO / "agent" / "prompt.md").read_text(),
