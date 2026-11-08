@@ -119,8 +119,8 @@ def main():
                     },
                 },
                 "tts": tts,
-                # Lifters are breathing hard and pause mid-sentence: wait a little longer before replying.
-                "turn": {"turn_eagerness": "patient", "turn_timeout": 20},
+                # Normal eagerness keeps replies fast; long turn_timeout so it does not nag during rest.
+                "turn": {"turn_eagerness": "normal", "turn_timeout": 20},
                 "conversation": {
                     "max_duration_seconds": 1800,
                     "client_events": ["audio", "interruption", "agent_response", "user_transcript", "client_tool_call"],
