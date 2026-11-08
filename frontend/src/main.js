@@ -91,7 +91,51 @@ async function postJSON(url, body) {
   return r.json();
 }
 
-fetch("/api/todos").then((r) => r.json()).then((d) => renderTodos(d.todos));
+// ---------- project (which repo Sam is pointed at) ----------
+function showProject(d) {
+  const p = d.active;
+  const status = $("project-status");
+  status.className = "project-status";
+  status.innerHTML = `<strong></strong> · indexed in Daytona · ${p.memory_items} memories · ${p.todos.length} to-dos`;
+  status.querySelector("strong").textContent = p.title;
+  $("project-input").placeholder = p.source === "demo" ? "GitHub URL or owner/repo — or 'demo'" : p.source.replace(/\.git$/, "");
+  $("recent-projects").innerHTML = "";
+  for (const r of d.recent || []) {
+    const o = document.createElement("option");
+    o.value = r.source === "demo" ? "demo" : r.source.replace(/\.git$/, "");
+    $("recent-projects").appendChild(o);
+  }
+  renderTodos(p.todos);
+}
+
+$("project-bar").onsubmit = async (e) => {
+  e.preventDefault();
+  const source = $("project-input").value.trim();
+  if (!source || conversation) return;
+  const status = $("project-status");
+  status.className = "project-status busy";
+  status.textContent = "Cloning into a Daytona sandbox and indexing…";
+  $("project-open").disabled = true;
+  try {
+    const r = await fetch("/api/project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    $("project-input").value = "";
+    showProject(d);
+    logActivity(`Pointed Sam at ${escapeHtml(d.active.title)}`, "done");
+  } catch (err) {
+    status.className = "project-status bad";
+    status.textContent = String(err.message || err);
+  } finally {
+    $("project-open").disabled = false;
+  }
+};
+
+fetch("/api/project").then((r) => r.json()).then(showProject);
 $("todo-reset").onclick = async () => renderTodos((await postJSON("/api/todos/reset", {})).todos);
 
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -105,6 +149,28 @@ const clientTools = {
     li.textContent = "Read experiment folder and to-do list";
     renderTodos(r.todos);
     return r.overview;
+  },
+
+  async read_file({ path = "", start_line = 1, max_lines = 150 }) {
+    const li = logActivity(`Reading <code>${escapeHtml(path)}</code>…`, "running");
+    const r = await postJSON("/api/read", { path, start_line: Number(start_line) || 1, max_lines: Number(max_lines) || 150 });
+    li.className = "done";
+    li.innerHTML = `Read <code>${escapeHtml(path)}</code>`;
+    return r.content;
+  },
+
+  async search_repo({ pattern = "" }) {
+    const li = logActivity(`Searching repo for “${escapeHtml(pattern)}”…`, "running");
+    const r = await postJSON("/api/search", { pattern });
+    li.className = "done";
+    li.textContent = `Searched repo for “${pattern}”`;
+    return r.content;
+  },
+
+  async remember({ note = "" }) {
+    await postJSON("/api/remember", { note });
+    logActivity(`Remembered: ${escapeHtml(note)}`, "done");
+    return "Saved to project memory.";
   },
 
   async update_todo({ id, status, finding = "" }) {

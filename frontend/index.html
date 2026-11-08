@@ -23,6 +23,14 @@
       </div>
     </header>
 
+    <form id="project-bar" class="project-bar">
+      <label for="project-input">Repo</label>
+      <input id="project-input" list="recent-projects" placeholder="GitHub URL or owner/repo — or 'demo'" autocomplete="off" />
+      <datalist id="recent-projects"></datalist>
+      <button id="project-open" type="submit" class="secondary">Point Sam at it</button>
+      <span id="project-status" class="project-status"></span>
+    </form>
+
     <main>
       <section class="board">
         <div class="board-head">

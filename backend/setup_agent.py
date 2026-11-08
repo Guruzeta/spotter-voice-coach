@@ -63,6 +63,48 @@ TOOLS = [
     },
     {
         "type": "client",
+        "name": "read_file",
+        "description": "Read a file from the researcher's repo (in the Daytona sandbox). Notebooks are rendered as text cells with short outputs. Returns numbered lines.",
+        "expects_response": True,
+        "response_timeout_secs": 30,
+        "pre_tool_speech": "auto",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path relative to the repo root, as shown in the file tree."},
+                "start_line": {"type": "integer", "description": "First line to show (default 1)."},
+                "max_lines": {"type": "integer", "description": "How many lines (default 150, max 300)."},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "type": "client",
+        "name": "search_repo",
+        "description": "Case-insensitive text search across the repo (like grep). Use to find where a variable, parameter or concept appears.",
+        "expects_response": True,
+        "response_timeout_secs": 30,
+        "pre_tool_speech": "auto",
+        "parameters": {
+            "type": "object",
+            "properties": {"pattern": {"type": "string", "description": "Text or regex to search for."}},
+            "required": ["pattern"],
+        },
+    },
+    {
+        "type": "client",
+        "name": "remember",
+        "description": "Save a durable note to this project's memory so future calls start with it: a verified finding, a decision, a correction from the researcher, or how they like things explained.",
+        "expects_response": False,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {"note": {"type": "string", "description": "One self-contained sentence, with numbers where relevant."}},
+            "required": ["note"],
+        },
+    },
+    {
+        "type": "client",
         "name": "write_on_board",
         "description": "Handwrite one short line on the whiteboard under the diagram: an equation, a key number, or a takeaway. Use unicode math (π, √, ≈, ², →).",
         "expects_response": False,
@@ -181,7 +223,7 @@ def main():
             "name": "Talk to your experiment",
             "conversation_config": {
                 "agent": {
-                    "first_message": "Hey, it's Sam. I've got your experiment open. Ready when you are.",
+                    "first_message": "Hey, it's Sam. I've got your project open. Ready when you are.",
                     "language": "en",
                     "prompt": {
                         "prompt": (REPO / "agent" / "prompt.md").read_text(),

@@ -9,6 +9,17 @@ optional recorded explainer video) to your repo.
 - **User:** a researcher with a folder of LLM-generated experiment runs they don't have time to read.
 - **Finish line:** a verified finding, explained at their level, saved as a report with figures in the repo.
 
+## Point it at any repo
+
+Paste a GitHub URL (or `owner/repo`) into the **Repo** bar. The backend clones it into its own named
+Daytona sandbox (`tte-<repo>`), indexes it (tree, README, notebook outlines, scripts, data columns) and keeps
+that sandbox for later calls. Sam reads files (`read_file`, notebooks rendered as text), greps (`search_repo`)
+and runs analysis in the repo itself. Per-project state lives in `projects/<repo>/`: `MEMORY.md` (findings and
+decisions Sam chose to `remember`, loaded at the start of every call), `TODO.md`, and the repo index.
+
+Two call modes: **To-do list** (clear your open questions together) and **Walkthrough** (Sam presents the
+project like a grad student; you probe like an advisor).
+
 ## How it works
 
 ```
