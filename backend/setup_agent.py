@@ -105,6 +105,47 @@ TOOLS = [
     },
     {
         "type": "client",
+        "name": "set_explanation_style",
+        "description": "Change how you explain, when the researcher asks (e.g. 'more math', 'too basic', 'just intuition'). Updates the controls on their screen and persists.",
+        "expects_response": True,
+        "response_timeout_secs": 10,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "level": {"type": "string", "enum": ["auto", "intro", "undergrad", "grad", "expert"], "description": "Explanation level; omit to keep the current one."},
+                "styles": {"type": "string", "description": "Comma-separated subset of: intuition, math, code, analogies, visual. Omit to keep current."},
+            },
+            "required": [],
+        },
+    },
+    {
+        "type": "client",
+        "name": "update_profile",
+        "description": "Rewrite the researcher's profile (used in every future call) after calibrating. Markdown with sections: Background, Strong in, Shaky on, How to explain to them, Vocabulary they use.",
+        "expects_response": True,
+        "response_timeout_secs": 15,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {"markdown": {"type": "string", "description": "The complete new profile in markdown, concise (under 250 words)."}},
+            "required": ["markdown"],
+        },
+    },
+    {
+        "type": "client",
+        "name": "note_about_user",
+        "description": "Append one lasting observation about the researcher to their profile (e.g. 'Knows directed percolation deeply; skip the basics', 'Prefers seeing the equation before the intuition').",
+        "expects_response": False,
+        "pre_tool_speech": "off",
+        "parameters": {
+            "type": "object",
+            "properties": {"note": {"type": "string", "description": "One sentence."}},
+            "required": ["note"],
+        },
+    },
+    {
+        "type": "client",
         "name": "write_on_board",
         "description": "Handwrite one short line on the whiteboard under the diagram: an equation, a key number, or a takeaway. Use unicode math (π, √, ≈, ², →).",
         "expects_response": False,

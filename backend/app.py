@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import listener
 import projects
 import todos
 from sandbox import PLOTS_DIR, Workspace
@@ -30,6 +31,7 @@ app = FastAPI()
 MODES = {
     "todo": "SESSION MODE: TODO — work through the researcher's to-do list together (see 'Mode: to-do list').",
     "walkthrough": "SESSION MODE: WALKTHROUGH — present the whole project section by section like a grad student to an advisor (see 'Mode: walkthrough').",
+    "calibrate": "SESSION MODE: CALIBRATE — learn how this researcher thinks and what level to pitch explanations at (see 'Mode: calibrate').",
 }
 
 
@@ -109,6 +111,7 @@ def experiment(mode: str = "todo"):
     overview = "\n\n".join(
         [
             MODES.get(mode, MODES["todo"]),
+            "=== WHO YOU'RE TALKING TO (tailor every explanation to this) ===\n" + listener.context(include_samples=mode == "calibrate"),
             f"PROJECT: {p.title}  (source: {p.source})",
             "=== PROJECT MEMORY (from previous sessions; oldest first) ===\n" + projects.memory_text(p),
             "=== RESEARCHER'S TO-DO LIST (id. [status] question) ===\n" + todos.as_text(items),
@@ -168,6 +171,43 @@ def remember(req: RememberRequest):
     p = projects.active()
     projects.remember(p, req.note)
     return {"ok": True, "memory": projects.memory_text(p)}
+
+
+@app.get("/api/profile")
+def get_profile():
+    return listener.get()
+
+
+class ProfileSettings(BaseModel):
+    level: str | None = None
+    styles: list[str] | None = None
+
+
+@app.post("/api/profile/settings")
+def set_profile_settings(req: ProfileSettings):
+    try:
+        return listener.set_settings(req.level, req.styles)
+    except ValueError as e:
+        return {"error": str(e), **listener.get()}
+
+
+class ProfileText(BaseModel):
+    text: str
+
+
+@app.post("/api/profile/replace")
+def replace_profile(req: ProfileText):
+    return listener.replace_profile(req.text)
+
+
+@app.post("/api/profile/note")
+def profile_note(req: ProfileText):
+    return listener.add_note(req.text)
+
+
+@app.post("/api/profile/sample")
+def profile_sample(req: ProfileText):
+    return listener.add_sample(req.text)
 
 
 @app.get("/api/todos")

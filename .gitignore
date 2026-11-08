@@ -9,3 +9,4 @@ backend/static/plots/*
 !backend/static/plots/.gitkeep
 scripts/board_shots/
 projects/
+profile/

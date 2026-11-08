@@ -136,6 +136,39 @@ $("project-bar").onsubmit = async (e) => {
 };
 
 fetch("/api/project").then((r) => r.json()).then(showProject);
+
+// ---------- who Sam is talking to ----------
+function showProfile(p, highlight = false) {
+  const level = $("level");
+  if (highlight && level.value !== p.settings.level) level.classList.add("changed");
+  level.value = p.settings.level;
+  document.querySelectorAll("#styles button").forEach((b) => {
+    const on = p.settings.styles.includes(b.dataset.style);
+    if (highlight && on !== b.classList.contains("on")) b.classList.add("changed");
+    b.classList.toggle("on", on);
+  });
+  setTimeout(() => document.querySelectorAll(".changed").forEach((el) => el.classList.remove("changed")), 1300);
+  $("profile-text").textContent = p.profile;
+  $("samples-count").textContent = p.samples_chars ? `(${Math.round(p.samples_chars / 1000)}k chars saved)` : "";
+}
+
+async function saveSettings() {
+  const styles = [...document.querySelectorAll("#styles button.on")].map((b) => b.dataset.style);
+  const p = await postJSON("/api/profile/settings", { level: $("level").value, styles });
+  showProfile(p);
+  // Let a live call know right away; it also gets the settings at the start of every call.
+  conversation?.sendContextualUpdate?.(`The researcher changed explanation settings: level=${p.settings.level}, styles=${p.settings.styles.join(", ")}. Adapt from now on.`);
+}
+$("level").onchange = saveSettings;
+document.querySelectorAll("#styles button").forEach((b) => (b.onclick = () => (b.classList.toggle("on"), saveSettings())));
+$("sample-save").onclick = async () => {
+  const text = $("sample-text").value.trim();
+  if (!text) return;
+  showProfile(await postJSON("/api/profile/sample", { text }));
+  $("sample-text").value = "";
+  logActivity("Saved a writing sample to your profile", "done");
+};
+fetch("/api/profile").then((r) => r.json()).then((p) => showProfile(p));
 $("todo-reset").onclick = async () => renderTodos((await postJSON("/api/todos/reset", {})).todos);
 
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -171,6 +204,30 @@ const clientTools = {
     await postJSON("/api/remember", { note });
     logActivity(`Remembered: ${escapeHtml(note)}`, "done");
     return "Saved to project memory.";
+  },
+
+  async set_explanation_style({ level, styles } = {}) {
+    const body = {};
+    if (level) body.level = level;
+    if (styles) body.styles = String(styles).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const p = await postJSON("/api/profile/settings", body);
+    showProfile(p, true);
+    if (p.error) return `Error: ${p.error}`;
+    logActivity(`Explanation style → ${p.settings.level}, ${p.settings.styles.join(" + ")}`, "done");
+    return `Now level=${p.settings.level}, styles=${p.settings.styles.join(", ")}.`;
+  },
+
+  async update_profile({ markdown = "" }) {
+    showProfile(await postJSON("/api/profile/replace", { text: markdown }), true);
+    document.querySelectorAll(".you-details")[0].open = true;
+    logActivity("Sam updated your profile", "done");
+    return "Profile saved; it will be used in every future call.";
+  },
+
+  async note_about_user({ note = "" }) {
+    showProfile(await postJSON("/api/profile/note", { text: note }));
+    logActivity(`Noted about you: ${escapeHtml(note)}`, "done");
+    return "Noted.";
   },
 
   async update_todo({ id, status, finding = "" }) {

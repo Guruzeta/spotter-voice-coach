@@ -17,6 +17,7 @@
         <div class="modes" role="radiogroup" aria-label="Call mode">
           <button data-mode="todo" class="mode" title="Work through your open questions together">To-do list</button>
           <button data-mode="walkthrough" class="mode" title="Sam presents the experiment; you ask questions like an advisor">Walkthrough</button>
+          <button data-mode="calibrate" class="mode" title="Explain something you know; Sam learns your level and style">Calibrate me</button>
         </div>
         <button id="record" class="secondary" title="Record this tab (board + voices) as an explainer video">● Record explainer</button>
         <button id="start">Start call</button>
@@ -47,6 +48,35 @@
       </section>
 
       <aside>
+        <section class="panel">
+          <h2>Explain it for me</h2>
+          <div class="you-row">
+            <label for="level">Level</label>
+            <select id="level">
+              <option value="auto">Auto (from profile)</option>
+              <option value="intro">Intro</option>
+              <option value="undergrad">Undergrad</option>
+              <option value="grad">Grad</option>
+              <option value="expert">Expert</option>
+            </select>
+          </div>
+          <div id="styles" class="chips" role="group" aria-label="Explanation styles">
+            <button data-style="intuition">Intuition</button>
+            <button data-style="math">Math</button>
+            <button data-style="code">Code</button>
+            <button data-style="analogies">Analogies</button>
+            <button data-style="visual">Visual</button>
+          </div>
+          <details class="you-details">
+            <summary>What Sam knows about you</summary>
+            <pre id="profile-text" class="profile-text"></pre>
+          </details>
+          <details class="you-details">
+            <summary>Add something you wrote <span id="samples-count" class="count"></span></summary>
+            <textarea id="sample-text" rows="4" placeholder="Paste a post, an abstract, notes… Sam matches your vocabulary and depth."></textarea>
+            <button id="sample-save" class="secondary small">Save sample</button>
+          </details>
+        </section>
         <section class="panel">
           <h2>To-do <span id="todo-count" class="count"></span><button id="todo-reset" class="link" title="Restore the original TODO.md">reset</button></h2>
           <ul id="todos" class="todos"><li class="empty">Loading…</li></ul>

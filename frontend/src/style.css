@@ -54,6 +54,24 @@ button:disabled { opacity: 0.5; cursor: default; }
 .pill.subtle { background: transparent; color: var(--muted); }
 .pill.live { background: var(--ok); color: #fff; }
 
+.you-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+.you-row select { font: inherit; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chips button {
+  padding: 3px 10px; font-size: 13px; border-radius: 99px;
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+}
+.chips button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chips button.changed, .you-row select.changed { animation: flash 1.2s ease-out; }
+.you-details { font-size: 13px; margin-top: 4px; }
+.you-details summary { cursor: pointer; color: var(--muted); }
+.profile-text { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; max-height: 160px; overflow: auto; margin: 6px 0 0; }
+.you-details textarea {
+  width: 100%; margin: 6px 0; font: inherit; padding: 6px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+button.small { padding: 4px 10px; font-size: 13px; }
+
 .project-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 20px 0;
