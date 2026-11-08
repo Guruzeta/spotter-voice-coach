@@ -14,9 +14,10 @@ PLOTS_DIR = Path(__file__).resolve().parent / "static" / "plots"
 MAX_OUTPUT = 4000
 
 PRELUDE = """\
-import os, warnings
+import os, sys, warnings
 warnings.filterwarnings("ignore")
 os.chdir({root!r})
+sys.path.insert(0, {root!r})
 os.makedirs("figs", exist_ok=True)
 import matplotlib
 matplotlib.use("Agg")
@@ -104,16 +105,14 @@ def experiment_overview() -> str:
     """Text snapshot of the experiment folder the agent reads at the start of a session."""
     parts = []
     files = sorted(p.relative_to(EXPERIMENT_DIR).as_posix() for p in EXPERIMENT_DIR.rglob("*") if p.is_file())
-    parts.append("FILES:\n" + "\n".join(f"- {f}" for f in files if not f.endswith("make_data.py")))
-    for name in ["NOTES.md", "configs.csv"]:
-        p = EXPERIMENT_DIR / name
-        if p.exists():
-            parts.append(f"=== {name} ===\n{p.read_text()}")
-    sample = EXPERIMENT_DIR / "metrics" / "run_1.csv"
-    if sample.exists():
+    parts.append("FILES:\n" + "\n".join(f"- {f}" for f in files))
+    for p in sorted(EXPERIMENT_DIR.glob("*.md")) + sorted(EXPERIMENT_DIR.glob("*.csv")):
+        parts.append(f"=== {p.name} ===\n{p.read_text()}")
+    sample = next(iter(sorted(EXPERIMENT_DIR.glob("*/*.csv"))), None)
+    if sample:
         head = "\n".join(sample.read_text().splitlines()[:4])
-        parts.append(f"=== metrics/run_1.csv (first rows; all runs share these columns) ===\n{head}")
-    train = EXPERIMENT_DIR / "train.py"
-    if train.exists():
-        parts.append(f"=== train.py ===\n{train.read_text()}")
+        rel = sample.relative_to(EXPERIMENT_DIR).as_posix()
+        parts.append(f"=== {rel} (first rows; sibling files share these columns) ===\n{head}")
+    for p in sorted(EXPERIMENT_DIR.glob("*.py")):
+        parts.append(f"=== {p.name} ===\n{p.read_text()}")
     return "\n\n".join(parts)

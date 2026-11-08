@@ -117,14 +117,14 @@ def main():
             print(f"created tool {tool['name']} -> {created['id']}")
         IDS_FILE.write_text(json.dumps(tool_ids, indent=2) + "\n")
 
-        tts = {}
+        tts = {"speed": float(os.getenv("AGENT_SPEED") or 0.92)}
         if os.getenv("AGENT_VOICE_ID"):
             tts["voice_id"] = os.getenv("AGENT_VOICE_ID")
         body = {
             "name": "Talk to your experiment",
             "conversation_config": {
                 "agent": {
-                    "first_message": "Hey, it's Sam. I've got your experiment folder open. What's confusing you the most?",
+                    "first_message": "Hey, it's Sam. I've got your experiment folder open. What do you want to look at?",
                     "language": "en",
                     "prompt": {
                         "prompt": (REPO / "agent" / "prompt.md").read_text(),
@@ -134,7 +134,9 @@ def main():
                     },
                 },
                 "tts": tts,
-                "turn": {"turn_eagerness": "normal"},
+                # "patient" waits longer before deciding the user finished talking;
+                # turn_timeout is how long Sam stays silent before nudging.
+                "turn": {"turn_eagerness": "patient", "turn_timeout": 12},
                 "conversation": {
                     "max_duration_seconds": 1200,
                     "client_events": ["audio", "interruption", "agent_response", "user_transcript", "client_tool_call"],
