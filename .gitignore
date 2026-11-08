@@ -10,3 +10,5 @@ backend/static/plots/*
 scripts/board_shots/
 projects/
 profile/
+shots/
+reports/

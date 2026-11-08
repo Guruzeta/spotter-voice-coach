@@ -1,8 +1,0 @@
-run_id,method,dt,k,m,x0,v0,t_end
-run_1,euler,0.01,1,1,1,0,100
-run_2,euler,0.1,1,1,1,0,100
-run_3,symplectic_euler,0.1,1,1,1,0,100
-run_4,verlet,0.1,1,1,1,0,100
-run_5,rk4,0.1,1,1,1,0,100
-run_6,verlet,2.1,1,1,1,0,100
-run_7,verlet,0.1,4,1,1,0,100

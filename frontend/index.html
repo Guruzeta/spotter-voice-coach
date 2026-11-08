@@ -3,99 +3,57 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Talk to Your Experiment</title>
+    <title>Spotter</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <header>
       <div class="brand">
-        <strong>Talk to your experiment</strong>
+        <strong>SPOTTER</strong>
+        <span class="tag">voice strength coach</span>
         <span id="status" class="pill">offline</span>
         <span id="mode" class="pill subtle"></span>
       </div>
-      <div class="actions">
-        <div class="modes" role="radiogroup" aria-label="Call mode">
-          <button data-mode="todo" class="mode" title="Work through your open questions together">To-do list</button>
-          <button data-mode="walkthrough" class="mode" title="Sam presents the experiment; you ask questions like an advisor">Walkthrough</button>
-          <button data-mode="calibrate" class="mode" title="Explain something you know; Sam learns your level and style">Calibrate me</button>
-        </div>
-        <button id="record" class="secondary" title="Record this tab (board + voices) as an explainer video">● Record explainer</button>
-        <button id="start">Start call</button>
-      </div>
+      <button id="start">Start workout</button>
     </header>
 
-    <form id="project-bar" class="project-bar">
-      <label for="project-input">Repo</label>
-      <input id="project-input" list="recent-projects" placeholder="GitHub URL or owner/repo — or 'demo'" autocomplete="off" />
-      <datalist id="recent-projects"></datalist>
-      <button id="project-open" type="submit" class="secondary">Point Sam at it</button>
-      <span id="project-status" class="project-status"></span>
-    </form>
-
     <main>
-      <section class="board">
-        <div class="board-head">
-          <span>Whiteboard</span>
-          <span id="caption" class="caption"></span>
-          <span id="step" class="pill subtle"></span>
+      <section class="left">
+        <div class="card next">
+          <div class="label">Next set</div>
+          <div id="next-weight" class="big">—</div>
+          <div id="next-detail" class="detail">Tell Spotter what you're lifting.</div>
+          <div id="next-insight" class="insight"></div>
         </div>
-        <div id="surface" class="surface">
-          <ol id="agenda" class="agenda" hidden></ol>
-          <div id="diagram" class="diagram"><p class="empty hand">Sam draws here while explaining…</p></div>
-          <div id="notes" class="notes"></div>
-          <div id="pen" class="pen" aria-hidden="true">✎</div>
+        <div class="card rest" id="rest-card" hidden>
+          <div class="label">Rest</div>
+          <div id="rest-time" class="big mono">2:00</div>
         </div>
+        <div class="card plot-card">
+          <div class="label">Analysis <span id="sandbox-badge" class="badge" hidden>ran in Daytona</span></div>
+          <div id="plot" class="plot"><p class="empty">Ask "what's next?" to see your trend.</p></div>
+        </div>
+        <div class="card summary" id="summary" hidden></div>
       </section>
 
       <aside>
-        <section class="panel">
-          <h2>Explain it for me</h2>
-          <div class="you-row">
-            <label for="level">Level</label>
-            <select id="level">
-              <option value="auto">Auto (from profile)</option>
-              <option value="intro">Intro</option>
-              <option value="undergrad">Undergrad</option>
-              <option value="grad">Grad</option>
-              <option value="expert">Expert</option>
-            </select>
-          </div>
-          <div id="styles" class="chips" role="group" aria-label="Explanation styles">
-            <button data-style="intuition">Intuition</button>
-            <button data-style="math">Math</button>
-            <button data-style="code">Code</button>
-            <button data-style="analogies">Analogies</button>
-            <button data-style="visual">Visual</button>
-          </div>
-          <details class="you-details">
-            <summary>What Sam knows about you</summary>
-            <pre id="profile-text" class="profile-text"></pre>
-          </details>
-          <details class="you-details">
-            <summary>Add something you wrote <span id="samples-count" class="count"></span></summary>
-            <textarea id="sample-text" rows="4" placeholder="Paste a post, an abstract, notes… Sam matches your vocabulary and depth."></textarea>
-            <button id="sample-save" class="secondary small">Save sample</button>
-          </details>
-        </section>
-        <section class="panel">
-          <h2>To-do <span id="todo-count" class="count"></span><button id="todo-reset" class="link" title="Restore the original TODO.md">reset</button></h2>
-          <ul id="todos" class="todos"><li class="empty">Loading…</li></ul>
-        </section>
-        <section class="panel">
-          <h2>Figures from the sandbox</h2>
-          <div id="plots" class="plots"><p class="empty">No figures yet.</p></div>
-        </section>
-        <section class="panel">
-          <h2>Agent activity</h2>
+        <div class="card">
+          <div class="label">Today</div>
+          <table class="sets">
+            <thead><tr><th>#</th><th>Lift</th><th>lb</th><th>Reps</th><th>RPE</th></tr></thead>
+            <tbody id="sets"><tr><td colspan="5" class="empty">No sets yet.</td></tr></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="label">Agent activity</div>
           <ol id="activity" class="activity"></ol>
-        </section>
-        <section class="panel grow">
-          <h2>Transcript</h2>
+        </div>
+        <div class="card grow">
+          <div class="label">Transcript</div>
           <div id="transcript" class="transcript"></div>
-        </section>
+        </div>
       </aside>
     </main>
-
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

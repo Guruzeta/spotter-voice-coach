@@ -1,49 +1,39 @@
-# Talk to Your Experiment
+# Spotter — a voice strength coach in your earbuds
 
-A voice research partner for people drowning in LLM-generated experiment code, logs and plots.
-You ask out loud what your experiment actually shows. The agent **runs the real analysis in a Daytona sandbox**,
-**sketches the explanation step by step on a whiteboard** while it talks, and **saves a report** (plus an
-optional recorded explainer video) to your repo.
+Between sets you're out of breath, your hands are on a bar and your phone is in your pocket. Spotter is the
+training partner you talk to: it logs every set by voice, works out your next weight from **today's performance
+and your training history** (analysis runs in a **Daytona** sandbox), times your rest, and when you're done saves
+the workout and **writes next session's plan**.
 
-- **Track:** Open (voice → code in Daytona)
-- **User:** a researcher with a folder of LLM-generated experiment runs they don't have time to read.
-- **Finish line:** a verified finding, explained at their level, saved as a report with figures in the repo.
+- **Track:** Open
+- **User:** a lifter mid-workout, hands full, who doesn't want to stop and type.
+- **Finish line:** the workout is logged and next session's plan is written with prescribed weights.
 
-## Point it at any repo
+## What it does
+| You say | Spotter does |
+|---|---|
+| "Squat, two twenty-five for five, felt like an eight" | `log_set` → set appears in today's table |
+| "Actually that was six reps" | `edit_set` → fixes it |
+| "What's next?" | `next_set` → Daytona computes estimated 1RM (Epley + reps-in-reserve), trend vs history, fatigue drop-off, plateau check → prescribed weight + chart |
+| (after a set) | `start_rest` → rest timer on screen |
+| "I'm done" | `finish_workout` → Daytona summary (volume, PRs), session saved to `data/sessions/`, history updated, `plans/next-session.md` written |
 
-Paste a GitHub URL (or `owner/repo`) into the **Repo** bar. The backend clones it into its own named
-Daytona sandbox (`tte-<repo>`), indexes it (tree, README, notebook outlines, scripts, data columns) and keeps
-that sandbox for later calls. Sam reads files (`read_file`, notebooks rendered as text), greps (`search_repo`)
-and runs analysis in the repo itself. Per-project state lives in `projects/<repo>/`: `MEMORY.md` (findings and
-decisions Sam chose to `remember`, loaded at the start of every call), `TODO.md`, and the repo index.
+The agent never does arithmetic itself: every number it says comes from code that ran in the sandbox.
 
-Two call modes: **To-do list** (clear your open questions together) and **Walkthrough** (Sam presents the
-project like a grad student; you probe like an advisor).
-
-## How it works
-
+## Architecture
 ```
-Browser (Vite)                          ElevenLabs Agent (voice, LLM, turn-taking)
-  ├─ @elevenlabs/client  <── WebRTC ──>   calls client tools:
-  ├─ Mermaid hand-drawn whiteboard          get_experiment_overview → /api/experiment
-  ├─ tab recorder → explainer .webm         run_analysis            → /api/run → Daytona sandbox
-  └─ client tools ── fetch ──> FastAPI      sketch                  → whiteboard (in browser)
-                                            save_report             → /api/report → reports/
+Browser (Vite) ── WebRTC ──> ElevenLabs Agent "Spotter" (voice, Claude LLM, patient turn-taking)
+   │  client tools: log_set / edit_set / delete_set / next_set / start_rest / finish_workout
+   └── fetch ──> FastAPI backend ──> Daytona sandbox "spotter-coach" (pandas/numpy/matplotlib analysis)
 ```
-
-- `backend/sandbox.py` keeps one warm Daytona sandbox with the experiment folder uploaded; agent-written
-  pandas/matplotlib code runs there and figures come back as PNGs.
 - `backend/setup_agent.py` creates the agent and its tools via the ElevenLabs API (config as code).
-- `agent/prompt.md` is the agent's system prompt.
-- `demo_experiment/` is a fake learning-rate sweep with real "stories" in it (a warmup-free run that spikes, a run that diverges).
+- `agent_prompt.md` is the coach's system prompt (gym-short replies, no mental math).
+- `backend/coach.py` holds the analysis that runs in Daytona.
+- `data/history.csv` is 8 weeks of seeded training history (`backend/seed_history.py`).
 
 ## Run it
-
 ```bash
-cp .env.example .env            # add ELEVENLABS_API_KEY and DAYTONA_API_KEY
-cd backend && uv sync && uv run python setup_agent.py   # creates the agent, writes its id to .env
-uv run uvicorn app:app --port 8000 --reload
-cd ../frontend && npm install && npm run dev            # open http://localhost:5173
+cp .env.example .env    # ELEVENLABS_API_KEY, DAYTONA_API_KEY
+cd backend && uv sync && uv run python setup_agent.py && uv run python -m uvicorn app:app --port 8100
+cd frontend && npm install && npx vite --port 5180    # open http://localhost:5180
 ```
-
-Re-run `setup_agent.py` after editing `agent/prompt.md` or tool definitions to update the agent in place.

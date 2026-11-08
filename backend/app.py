@@ -1,8 +1,8 @@
+import csv
+import io
 import os
-import re
-import shutil
 import threading
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
@@ -11,266 +11,172 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import listener
-import projects
-import todos
-from sandbox import PLOTS_DIR, Workspace
+from coach import PLOTS_DIR, Coach
 
 load_dotenv(find_dotenv(usecwd=True))
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-REPORTS_DIR = REPO_ROOT / "reports"
+ROOT = Path(__file__).resolve().parent.parent
+DATA = ROOT / "data"
+HISTORY = DATA / "history.csv"
+SESSIONS = DATA / "sessions"
+PLANS = ROOT / "plans"
 ELEVEN_API = "https://api.elevenlabs.io/v1"
+FIELDS = ["date", "exercise", "weight_lb", "reps", "rpe"]
 
-PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-projects.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
-workspace = Workspace()
+for d in (PLOTS_DIR, SESSIONS, PLANS):
+    d.mkdir(parents=True, exist_ok=True)
+
+coach = Coach()
 app = FastAPI()
+lock = threading.Lock()
+today_sets: list[dict] = []  # the workout in progress
 
-MODES = {
-    "todo": "SESSION MODE: TODO — work through the researcher's to-do list together (see 'Mode: to-do list').",
-    "walkthrough": "SESSION MODE: WALKTHROUGH — present the whole project section by section like a grad student to an advisor (see 'Mode: walkthrough').",
-    "calibrate": "SESSION MODE: CALIBRATE — learn how this researcher thinks and what level to pitch explanations at (see 'Mode: calibrate').",
+ALIASES = {
+    "bench": "bench press", "benchpress": "bench press", "bench presses": "bench press",
+    "squats": "squat", "back squat": "squat", "deadlifts": "deadlift", "dead lift": "deadlift",
+    "goblet squats": "goblet squat", "goblet": "goblet squat",
 }
 
 
-# ---------- voice session ----------
+def norm(ex: str) -> str:
+    e = " ".join(ex.lower().strip().split())
+    return ALIASES.get(e, e)
+
+
+def to_csv(rows) -> str:
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=FIELDS, extrasaction="ignore")
+    w.writeheader()
+    w.writerows(rows)
+    return buf.getvalue()
+
+
+def state():
+    with lock:
+        sets = [{"n": i + 1, **s} for i, s in enumerate(today_sets)]
+    return {"sets": sets}
+
+
 @app.get("/api/session")
 async def session():
-    """Short-lived credential so the browser can talk to the private agent without seeing the API key."""
     key, agent_id = os.getenv("ELEVENLABS_API_KEY"), os.getenv("ELEVENLABS_AGENT_ID")
     if not key or not agent_id:
         raise HTTPException(500, "Set ELEVENLABS_API_KEY and run setup_agent.py first")
-    headers = {"xi-api-key": key}
     async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(f"{ELEVEN_API}/convai/conversation/token", params={"agent_id": agent_id}, headers=headers)
-        if r.status_code == 200 and r.json().get("token"):
-            return {"conversation_token": r.json()["token"]}
-        r2 = await client.get(f"{ELEVEN_API}/convai/conversation/get-signed-url", params={"agent_id": agent_id}, headers=headers)
-        if r2.status_code == 200:
-            return {"signed_url": r2.json()["signed_url"]}
-    raise HTTPException(502, f"ElevenLabs auth failed: {r.status_code} {r.text[:200]} / {r2.status_code} {r2.text[:200]}")
-
-
-# ---------- projects ----------
-def project_info(p):
-    return {
-        "slug": p.slug,
-        "title": p.title,
-        "source": p.source,
-        "indexed": p.index_path.exists(),
-        "memory_items": projects.memory_text(p).count("\n- ") + (1 if projects.memory_text(p).startswith("- ") else 0),
-        "todos": todos.list_todos(p),
-    }
-
-
-@app.get("/api/project")
-def get_project():
-    return {"active": project_info(projects.active()), "recent": projects.list_projects()}
-
-
-class ProjectRequest(BaseModel):
-    source: str
-
-
-@app.post("/api/project")
-def open_project(req: ProjectRequest):
-    """Point Sam at a repo: clone it into its own persistent Daytona sandbox and index it (first time only)."""
-    p = projects.load_or_create(req.source)
-    try:
-        workspace.get(p)
-        if not p.index_path.exists():
-            workspace.index(p)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(400, f"Could not open {p.source}: {e}")
-    projects.set_active(p)
-    return {"active": project_info(p), "recent": projects.list_projects()}
-
-
-@app.post("/api/project/reindex")
-def reindex():
-    p = projects.active()
-    workspace.index(p)
-    return {"active": project_info(p)}
+        r = await client.get(f"{ELEVEN_API}/convai/conversation/token", params={"agent_id": agent_id}, headers={"xi-api-key": key})
+    if r.status_code != 200:
+        raise HTTPException(502, f"ElevenLabs auth failed: {r.status_code} {r.text[:200]}")
+    return {"conversation_token": r.json()["token"]}
 
 
 @app.post("/api/warmup")
 def warmup():
-    threading.Thread(target=workspace.get, args=(projects.active(),), daemon=True).start()
+    threading.Thread(target=coach.sandbox, daemon=True).start()
     return {"ok": True}
 
 
-# ---------- what the agent reads at the start of a call ----------
-@app.get("/api/experiment")
-def experiment(mode: str = "todo"):
-    p = projects.active()
-    if not p.index_path.exists():
-        workspace.index(p)
-    items = todos.list_todos(p)
-    overview = "\n\n".join(
-        [
-            MODES.get(mode, MODES["todo"]),
-            "=== WHO YOU'RE TALKING TO (tailor every explanation to this) ===\n" + listener.context(include_samples=mode == "calibrate"),
-            f"PROJECT: {p.title}  (source: {p.source})",
-            "=== PROJECT MEMORY (from previous sessions; oldest first) ===\n" + projects.memory_text(p),
-            "=== RESEARCHER'S TO-DO LIST (id. [status] question) ===\n" + todos.as_text(items),
-            "=== REPO INDEX ===\n" + p.index_path.read_text(),
-        ]
-    )
-    return {"overview": overview, "todos": items, "project": project_info(p)}
+@app.get("/api/state")
+def get_state():
+    return state()
 
 
-# ---------- agent tools ----------
-class RunRequest(BaseModel):
-    code: str
-    purpose: str = ""
+class SetIn(BaseModel):
+    exercise: str
+    weight_lb: float
+    reps: int
+    rpe: float = 8
 
 
-@app.post("/api/run")
-def run(req: RunRequest):
-    print(f"[run] {req.purpose}")
+@app.post("/api/log_set")
+def log_set(s: SetIn):
+    row = {"date": date.today().isoformat(), "exercise": norm(s.exercise), "weight_lb": s.weight_lb, "reps": s.reps, "rpe": s.rpe}
+    with lock:
+        today_sets.append(row)
+        n = len(today_sets)
+    est = s.weight_lb * (1 + (s.reps + (10 - s.rpe)) / 30)
+    return {"set_number": n, "logged": row, "estimated_max_lb": round(est, 1), **state()}
+
+
+class EditIn(BaseModel):
+    set_number: int
+    exercise: str | None = None
+    weight_lb: float | None = None
+    reps: int | None = None
+    rpe: float | None = None
+
+
+@app.post("/api/edit_set")
+def edit_set(e: EditIn):
+    with lock:
+        if not 1 <= e.set_number <= len(today_sets):
+            return {"error": f"No set {e.set_number}; there are {len(today_sets)} sets today.", **state()}
+        row = today_sets[e.set_number - 1]
+        for k in ("weight_lb", "reps", "rpe"):
+            if getattr(e, k) is not None:
+                row[k] = getattr(e, k)
+        if e.exercise:
+            row["exercise"] = norm(e.exercise)
+    return {"edited": e.set_number, **state()}
+
+
+@app.post("/api/delete_set")
+def delete_set(e: EditIn):
+    with lock:
+        if not 1 <= e.set_number <= len(today_sets):
+            return {"error": f"No set {e.set_number}.", **state()}
+        today_sets.pop(e.set_number - 1)
+    return {"deleted": e.set_number, **state()}
+
+
+class NextIn(BaseModel):
+    exercise: str
+    reps: int = 5
+    rpe: float = 8
+
+
+@app.post("/api/next_set")
+def next_set(n: NextIn):
+    with lock:
+        today_csv = to_csv(today_sets)
     try:
-        return workspace.run(projects.active(), req.code)
-    except Exception as e:  # noqa: BLE001 - surface any sandbox failure to the agent
-        return {"exit_code": -1, "output": f"Sandbox error: {e}", "plots": []}
-
-
-class ReadRequest(BaseModel):
-    path: str
-    start_line: int = 1
-    max_lines: int = 150
-
-
-@app.post("/api/read")
-def read(req: ReadRequest):
-    try:
-        return {"content": workspace.read_file(projects.active(), req.path, req.start_line, req.max_lines)}
+        return coach.next_set(HISTORY.read_text(), today_csv, date.today().isoformat(), norm(n.exercise), n.reps, n.rpe)
     except Exception as e:  # noqa: BLE001
-        return {"content": f"Read error: {e}"}
+        return {"error": f"Sandbox error: {e}"}
 
 
-class SearchRequest(BaseModel):
-    pattern: str
-
-
-@app.post("/api/search")
-def search(req: SearchRequest):
+@app.post("/api/finish")
+def finish():
+    with lock:
+        rows = list(today_sets)
+    if not rows:
+        return {"error": "No sets logged yet."}
     try:
-        return {"content": workspace.search(projects.active(), req.pattern)}
+        result = coach.finish(HISTORY.read_text(), to_csv(rows), date.today().isoformat())
     except Exception as e:  # noqa: BLE001
-        return {"content": f"Search error: {e}"}
+        return {"error": f"Sandbox error: {e}"}
+    if "error" in result:
+        return result
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+    (SESSIONS / f"{stamp}.csv").write_text(to_csv(rows))
+    with HISTORY.open("a", newline="") as f:
+        csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore").writerows(rows)
+    lines = [f"# Next session plan (written {stamp})", "", result["plan_table"], "", "## Today", ""]
+    for e in result["exercises"]:
+        pr = " **PR!**" if e["personal_record"] else ""
+        lines.append(f"- {e['exercise']}: {e['sets']} sets, {e['volume_lb']:.0f} lb volume, best est. max {e['today_best_e1rm']} lb (previous best {e['previous_best_e1rm']}){pr}")
+    plan_path = PLANS / "next-session.md"
+    plan_path.write_text("\n".join(lines) + "\n")
+    with lock:
+        today_sets.clear()
+    result["saved"] = {"session": f"data/sessions/{stamp}.csv", "plan": "plans/next-session.md"}
+    return result
 
 
-class RememberRequest(BaseModel):
-    note: str
-
-
-@app.post("/api/remember")
-def remember(req: RememberRequest):
-    p = projects.active()
-    projects.remember(p, req.note)
-    return {"ok": True, "memory": projects.memory_text(p)}
-
-
-@app.get("/api/profile")
-def get_profile():
-    return listener.get()
-
-
-class ProfileSettings(BaseModel):
-    level: str | None = None
-    styles: list[str] | None = None
-
-
-@app.post("/api/profile/settings")
-def set_profile_settings(req: ProfileSettings):
-    try:
-        return listener.set_settings(req.level, req.styles)
-    except ValueError as e:
-        return {"error": str(e), **listener.get()}
-
-
-class ProfileText(BaseModel):
-    text: str
-
-
-@app.post("/api/profile/replace")
-def replace_profile(req: ProfileText):
-    return listener.replace_profile(req.text)
-
-
-@app.post("/api/profile/note")
-def profile_note(req: ProfileText):
-    return listener.add_note(req.text)
-
-
-@app.post("/api/profile/sample")
-def profile_sample(req: ProfileText):
-    return listener.add_sample(req.text)
-
-
-@app.get("/api/todos")
-def get_todos():
-    return {"todos": todos.list_todos(projects.active())}
-
-
-class TodoUpdate(BaseModel):
-    id: int
-    status: str
-    finding: str = ""
-
-
-@app.post("/api/todos/update")
-def update_todo(req: TodoUpdate):
-    p = projects.active()
-    try:
-        items = todos.update_todo(p, req.id, req.status, req.finding)
-    except ValueError as e:
-        return {"error": str(e), "todos": todos.list_todos(p)}
-    return {"todos": items}
-
-
-class TodoAdd(BaseModel):
-    text: str
-
-
-@app.post("/api/todos/add")
-def add_todo(req: TodoAdd):
-    return {"todos": todos.add_todo(projects.active(), req.text)}
-
-
-@app.post("/api/todos/reset")
-def reset_todos():
-    return {"todos": todos.reset_todos(projects.active())}
-
-
-class ReportRequest(BaseModel):
-    title: str
-    markdown: str
-    plots: list[str] = []
-
-
-@app.post("/api/report")
-def report(req: ReportRequest):
-    p = projects.active()
-    slug = re.sub(r"[^a-z0-9]+", "-", req.title.lower()).strip("-")[:50] or "report"
-    folder = REPORTS_DIR / p.slug / f"{datetime.now():%Y%m%d-%H%M%S}-{slug}"
-    folder.mkdir(parents=True)
-    body = req.markdown + "\n\n## To-do status\n\n" + todos.as_markdown(todos.list_todos(p))
-    images = []
-    for url in req.plots:
-        src = PLOTS_DIR / Path(url).name
-        if src.exists():
-            shutil.copy(src, folder / src.name)
-            images.append(src.name)
-    if images:
-        body += "\n\n## Figures\n\n" + "\n\n".join(f"![]({name})" for name in images)
-    (folder / "report.md").write_text(f"# {req.title}\n\n_Project: {p.title} ({p.source})_\n\n{body}\n")
-    projects.remember(p, f"Saved report '{req.title}' at {folder.relative_to(REPO_ROOT).as_posix()}/report.md")
-    rel = folder.relative_to(REPO_ROOT).as_posix()
-    return {"path": f"{rel}/report.md", "url": f"/{rel}/report.md"}
+@app.post("/api/reset")
+def reset():
+    with lock:
+        today_sets.clear()
+    return state()
 
 
 app.mount("/plots", StaticFiles(directory=PLOTS_DIR), name="plots")
-app.mount("/reports", StaticFiles(directory=REPORTS_DIR), name="reports")

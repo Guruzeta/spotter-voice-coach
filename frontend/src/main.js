@@ -1,36 +1,13 @@
 import { Conversation } from "@elevenlabs/client";
-import * as board from "./board.js";
 
 const $ = (id) => document.getElementById(id);
-const startBtn = $("start");
-const recordBtn = $("record");
-
 let conversation = null;
-const sessionPlots = [];
-if (import.meta.env.DEV) window.board = board; // lets you try the whiteboard from the console
+let prevSetCount = 0;
 
-// ---------- mode switch ----------
-let mode = "todo";
-try {
-  mode = localStorage.getItem("mode") || "todo";
-} catch {}
-function setMode(m) {
-  mode = m;
-  try {
-    localStorage.setItem("mode", m);
-  } catch {}
-  document.querySelectorAll(".mode").forEach((b) => b.classList.toggle("selected", b.dataset.mode === m));
-}
-document.querySelectorAll(".mode").forEach((b) => (b.onclick = () => !conversation && setMode(b.dataset.mode)));
-setMode(mode);
+// ---------- UI ----------
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-// ---------- UI helpers ----------
-function setStatus(text, live = false) {
-  $("status").textContent = text;
-  $("status").classList.toggle("live", live);
-}
-
-function logActivity(text, cls = "") {
+function log(text, cls = "") {
   const li = document.createElement("li");
   li.className = cls;
   li.innerHTML = text;
@@ -39,368 +16,196 @@ function logActivity(text, cls = "") {
   return li;
 }
 
-function addTranscript(who, text) {
+function say(who, text) {
   const p = document.createElement("p");
-  p.className = who === "ai" ? "ai" : "user";
-  p.innerHTML = `<span class="who">${who === "ai" ? "Sam" : "You"}</span>`;
+  p.className = who;
+  p.innerHTML = `<span class="who">${who === "ai" ? "Spotter" : "You"}</span>`;
   p.append(document.createTextNode(text));
   $("transcript").appendChild(p);
   p.scrollIntoView({ block: "nearest" });
 }
 
-function showPlots(urls) {
-  const box = $("plots");
-  if (!sessionPlots.length) box.innerHTML = "";
-  for (const url of urls) {
-    sessionPlots.push(url);
-    const img = document.createElement("img");
-    img.src = url;
-    img.alt = "Figure from sandbox analysis";
-    img.onclick = () => img.classList.toggle("big");
-    box.prepend(img);
-  }
-}
-
-const TODO_ICON = { open: "☐", in_progress: "◐", done: "☑", skipped: "⊘" };
-let prevTodos = {};
-
-function renderTodos(todos = []) {
-  const ul = $("todos");
-  ul.innerHTML = todos.length ? "" : `<li class="empty">No to-dos.</li>`;
-  for (const t of todos) {
-    const li = document.createElement("li");
-    li.className = t.status;
-    if (prevTodos[t.id] && prevTodos[t.id] !== t.status) li.classList.add("flash");
-    li.innerHTML = `<span class="box">${TODO_ICON[t.status]}</span><span class="text"></span>`;
-    li.querySelector(".text").textContent = t.text;
-    if (t.finding) {
-      const f = document.createElement("span");
-      f.className = "finding";
-      f.textContent = t.finding;
-      li.appendChild(f);
+function renderSets(sets, editedN = null) {
+  const tb = $("sets");
+  if (!sets.length) {
+    tb.innerHTML = `<tr><td colspan="5" class="empty">No sets yet.</td></tr>`;
+  } else {
+    tb.innerHTML = "";
+    for (const s of sets) {
+      const tr = document.createElement("tr");
+      if (s.n > prevSetCount) tr.className = "new";
+      if (s.n === editedN) tr.className = "edited";
+      tr.innerHTML = `<td>${s.n}</td><td>${esc(s.exercise)}</td><td>${s.weight_lb}</td><td>${s.reps}</td><td>${s.rpe}</td>`;
+      tb.appendChild(tr);
     }
-    ul.appendChild(li);
   }
-  prevTodos = Object.fromEntries(todos.map((t) => [t.id, t.status]));
-  const open = todos.filter((t) => t.status === "open" || t.status === "in_progress").length;
-  $("todo-count").textContent = todos.length ? `${todos.length - open}/${todos.length} cleared` : "";
+  prevSetCount = sets.length;
 }
 
-async function postJSON(url, body) {
+function showPlot(urls) {
+  if (!urls?.length) return;
+  $("plot").innerHTML = `<img src="${urls[0]}" alt="Training analysis chart" />`;
+  $("sandbox-badge").hidden = false;
+}
+
+async function post(url, body = {}) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   return r.json();
 }
 
-// ---------- project (which repo Sam is pointed at) ----------
-function showProject(d) {
-  const p = d.active;
-  const status = $("project-status");
-  status.className = "project-status";
-  status.innerHTML = `<strong></strong> · indexed in Daytona · ${p.memory_items} memories · ${p.todos.length} to-dos`;
-  status.querySelector("strong").textContent = p.title;
-  $("project-input").placeholder = p.source === "demo" ? "GitHub URL or owner/repo — or 'demo'" : p.source.replace(/\.git$/, "");
-  $("recent-projects").innerHTML = "";
-  for (const r of d.recent || []) {
-    const o = document.createElement("option");
-    o.value = r.source === "demo" ? "demo" : r.source.replace(/\.git$/, "");
-    $("recent-projects").appendChild(o);
-  }
-  renderTodos(p.todos);
+// ---------- rest timer ----------
+let restTimer = null;
+function startRest(seconds) {
+  clearInterval(restTimer);
+  const card = $("rest-card");
+  card.hidden = false;
+  card.classList.remove("done");
+  let left = Math.max(5, Math.round(seconds));
+  const draw = () => ($("rest-time").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`);
+  draw();
+  restTimer = setInterval(() => {
+    left -= 1;
+    draw();
+    if (left <= 0) {
+      clearInterval(restTimer);
+      card.classList.add("done");
+      $("rest-time").textContent = "GO";
+      conversation?.sendContextualUpdate?.("The rest timer just finished; the lifter can start the next set.");
+    }
+  }, 1000);
 }
 
-$("project-bar").onsubmit = async (e) => {
-  e.preventDefault();
-  const source = $("project-input").value.trim();
-  if (!source || conversation) return;
-  const status = $("project-status");
-  status.className = "project-status busy";
-  status.textContent = "Cloning into a Daytona sandbox and indexing…";
-  $("project-open").disabled = true;
-  try {
-    const r = await fetch("/api/project", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || r.statusText);
-    $("project-input").value = "";
-    showProject(d);
-    logActivity(`Pointed Sam at ${escapeHtml(d.active.title)}`, "done");
-  } catch (err) {
-    status.className = "project-status bad";
-    status.textContent = String(err.message || err);
-  } finally {
-    $("project-open").disabled = false;
-  }
-};
-
-fetch("/api/project").then((r) => r.json()).then(showProject);
-
-// ---------- who Sam is talking to ----------
-function showProfile(p, highlight = false) {
-  const level = $("level");
-  if (highlight && level.value !== p.settings.level) level.classList.add("changed");
-  level.value = p.settings.level;
-  document.querySelectorAll("#styles button").forEach((b) => {
-    const on = p.settings.styles.includes(b.dataset.style);
-    if (highlight && on !== b.classList.contains("on")) b.classList.add("changed");
-    b.classList.toggle("on", on);
-  });
-  setTimeout(() => document.querySelectorAll(".changed").forEach((el) => el.classList.remove("changed")), 1300);
-  $("profile-text").textContent = p.profile;
-  $("samples-count").textContent = p.samples_chars ? `(${Math.round(p.samples_chars / 1000)}k chars saved)` : "";
-}
-
-async function saveSettings() {
-  const styles = [...document.querySelectorAll("#styles button.on")].map((b) => b.dataset.style);
-  const p = await postJSON("/api/profile/settings", { level: $("level").value, styles });
-  showProfile(p);
-  // Let a live call know right away; it also gets the settings at the start of every call.
-  conversation?.sendContextualUpdate?.(`The researcher changed explanation settings: level=${p.settings.level}, styles=${p.settings.styles.join(", ")}. Adapt from now on.`);
-}
-$("level").onchange = saveSettings;
-document.querySelectorAll("#styles button").forEach((b) => (b.onclick = () => (b.classList.toggle("on"), saveSettings())));
-$("sample-save").onclick = async () => {
-  const text = $("sample-text").value.trim();
-  if (!text) return;
-  showProfile(await postJSON("/api/profile/sample", { text }));
-  $("sample-text").value = "";
-  logActivity("Saved a writing sample to your profile", "done");
-};
-fetch("/api/profile").then((r) => r.json()).then((p) => showProfile(p));
-$("todo-reset").onclick = async () => renderTodos((await postJSON("/api/todos/reset", {})).todos);
-
-const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-
-// ---------- Client tools (called by the ElevenLabs agent mid-conversation) ----------
+// ---------- client tools the ElevenLabs agent calls ----------
 const clientTools = {
-  async get_experiment_overview() {
-    const li = logActivity("Reading experiment folder…", "running");
-    const r = await fetch(`/api/experiment?mode=${mode}`).then((x) => x.json());
-    li.className = "done";
-    li.textContent = "Read experiment folder and to-do list";
-    renderTodos(r.todos);
-    return r.overview;
+  async log_set({ exercise, weight_lb, reps, rpe = 8 }) {
+    const r = await post("/api/log_set", { exercise, weight_lb: Number(weight_lb), reps: Number(reps), rpe: Number(rpe) });
+    renderSets(r.sets);
+    log(`Logged set ${r.set_number}: ${esc(r.logged.exercise)} ${r.logged.weight_lb}×${r.logged.reps} @${r.logged.rpe}`, "done");
+    return JSON.stringify({ set_number: r.set_number, logged: r.logged, sets_today: r.sets.length });
   },
 
-  async read_file({ path = "", start_line = 1, max_lines = 150 }) {
-    const li = logActivity(`Reading <code>${escapeHtml(path)}</code>…`, "running");
-    const r = await postJSON("/api/read", { path, start_line: Number(start_line) || 1, max_lines: Number(max_lines) || 150 });
-    li.className = "done";
-    li.innerHTML = `Read <code>${escapeHtml(path)}</code>`;
-    return r.content;
-  },
-
-  async search_repo({ pattern = "" }) {
-    const li = logActivity(`Searching repo for “${escapeHtml(pattern)}”…`, "running");
-    const r = await postJSON("/api/search", { pattern });
-    li.className = "done";
-    li.textContent = `Searched repo for “${pattern}”`;
-    return r.content;
-  },
-
-  async remember({ note = "" }) {
-    await postJSON("/api/remember", { note });
-    logActivity(`Remembered: ${escapeHtml(note)}`, "done");
-    return "Saved to project memory.";
-  },
-
-  async set_explanation_style({ level, styles } = {}) {
-    const body = {};
-    if (level) body.level = level;
-    if (styles) body.styles = String(styles).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const p = await postJSON("/api/profile/settings", body);
-    showProfile(p, true);
-    if (p.error) return `Error: ${p.error}`;
-    logActivity(`Explanation style → ${p.settings.level}, ${p.settings.styles.join(" + ")}`, "done");
-    return `Now level=${p.settings.level}, styles=${p.settings.styles.join(", ")}.`;
-  },
-
-  async update_profile({ markdown = "" }) {
-    showProfile(await postJSON("/api/profile/replace", { text: markdown }), true);
-    document.querySelectorAll(".you-details")[0].open = true;
-    logActivity("Sam updated your profile", "done");
-    return "Profile saved; it will be used in every future call.";
-  },
-
-  async note_about_user({ note = "" }) {
-    showProfile(await postJSON("/api/profile/note", { text: note }));
-    logActivity(`Noted about you: ${escapeHtml(note)}`, "done");
-    return "Noted.";
-  },
-
-  async update_todo({ id, status, finding = "" }) {
-    const r = await postJSON("/api/todos/update", { id: Number(id), status, finding });
-    renderTodos(r.todos);
+  async edit_set({ set_number, ...fields }) {
+    const body = { set_number: Number(set_number) };
+    for (const k of ["exercise", "weight_lb", "reps", "rpe"]) if (fields[k] !== undefined && fields[k] !== null && fields[k] !== "") body[k] = k === "exercise" ? fields[k] : Number(fields[k]);
+    const r = await post("/api/edit_set", body);
+    renderSets(r.sets, Number(set_number));
     if (r.error) return `Error: ${r.error}`;
-    logActivity(`To-do ${id} → ${status.replace("_", " ")}`, "done");
-    return `To-do ${id} is now ${status}. Current list:\n` + r.todos.map((t) => `${t.id}. [${t.status}] ${t.text}`).join("\n");
+    log(`Edited set ${set_number}`, "done");
+    return JSON.stringify({ edited: Number(set_number), sets: r.sets });
   },
 
-  async add_todo({ text = "" }) {
-    const r = await postJSON("/api/todos/add", { text });
-    renderTodos(r.todos);
-    logActivity(`Added to-do: ${escapeHtml(text)}`, "done");
-    return `Added as to-do ${r.todos.length}.`;
+  async delete_set({ set_number }) {
+    const r = await post("/api/delete_set", { set_number: Number(set_number) });
+    renderSets(r.sets);
+    if (r.error) return `Error: ${r.error}`;
+    log(`Deleted set ${set_number}`, "done");
+    return `Deleted set ${set_number}.`;
   },
 
-  async run_analysis({ purpose = "", code = "" }) {
-    const li = logActivity(`Daytona sandbox: ${escapeHtml(purpose || "running analysis")}…`, "running");
-    try {
-      const r = await fetch("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ purpose, code }),
-      }).then((x) => x.json());
-      const ok = r.exit_code === 0;
-      li.className = ok ? "done" : "error";
-      li.textContent = `Daytona sandbox: ${purpose || "analysis"} — ${ok ? "done" : "error"}${r.seconds ? ` (${r.seconds}s)` : ""}`;
-      if (r.plots?.length) showPlots(r.plots);
-      return JSON.stringify({
-        exit_code: r.exit_code,
-        output: r.output,
-        figures_shown_on_screen: r.plots?.length || 0,
-      });
-    } catch (e) {
+  async next_set({ exercise, reps = 5, rpe = 8 }) {
+    const li = log(`Daytona: analysing ${esc(exercise)}…`, "running");
+    const r = await post("/api/next_set", { exercise, reps: Number(reps) || 5, rpe: Number(rpe) || 8 });
+    if (r.error) {
       li.className = "error";
-      li.textContent = `Sandbox request failed: ${e}`;
-      return JSON.stringify({ exit_code: -1, output: String(e) });
+      li.textContent = "Analysis failed";
+      return `Error: ${r.error}`;
     }
-  },
-
-  async sketch({ mermaid: code = "", caption = "" }) {
-    try {
-      const n = await board.sketch(code, caption);
-      $("step").textContent = `sketch ${n}`;
-      return "Drawing it on the whiteboard now (new parts animate in). Talk about the new part.";
-    } catch (e) {
-      document.querySelectorAll(`[id^="dsketch"]`).forEach((el) => el.remove()); // mermaid error leftovers
-      logActivity("Sketch had a syntax error; agent is retrying", "error");
-      return `Mermaid syntax error: ${String(e?.message || e).slice(0, 300)}. Simplify and retry.`;
-    }
-  },
-
-  async write_on_board({ text = "" }) {
-    board.write(String(text).slice(0, 80));
-    return "Writing it on the board.";
-  },
-
-  async show_agenda({ items = "", current = 1 }) {
-    const list = (Array.isArray(items) ? items : String(items).split("|")).map((s) => s.trim()).filter(Boolean);
-    board.agenda(list, Number(current) || 1);
-    return `Agenda on the board; now on section ${current} of ${list.length}.`;
-  },
-
-  async save_report({ title = "Experiment report", markdown = "" }) {
-    const li = logActivity("Saving report…", "running");
-    const r = await fetch("/api/report", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, markdown, plots: sessionPlots }),
-    }).then((x) => x.json());
     li.className = "done";
-    li.innerHTML = `Report saved: <a href="${r.url}" target="_blank">${escapeHtml(r.path)}</a>`;
-    return `Saved to ${r.path}`;
+    li.textContent = `Daytona: analysed ${r.exercise} (${r.sandbox_seconds}s)`;
+    if (r.prescription) {
+      $("next-weight").textContent = `${r.prescription.weight_lb} lb`;
+      $("next-weight").classList.remove("flash");
+      void $("next-weight").offsetWidth;
+      $("next-weight").classList.add("flash");
+      $("next-detail").textContent = `${r.exercise} · ${r.prescription.reps} reps @ RPE ${r.prescription.rpe}`;
+    }
+    const bits = [];
+    if (r.today_best_e1rm) bits.push(`Est. max today ${r.today_best_e1rm} lb (${r.vs_last_session_pct >= 0 ? "+" : ""}${r.vs_last_session_pct}% vs last session)`);
+    if (r.fatigue_drop_pct > 7) bits.push(`fatigue −${r.fatigue_drop_pct}%`);
+    if (r.plateau) bits.push("plateau: last 3 sessions flat");
+    $("next-insight").textContent = r.note || bits.join(" · ");
+    showPlot(r.plots);
+    const { plots, ...forAgent } = r;
+    return JSON.stringify(forAgent);
+  },
+
+  async start_rest({ seconds = 120 }) {
+    startRest(Number(seconds) || 120);
+    log(`Rest ${seconds}s`, "done");
+    return "Timer started.";
+  },
+
+  async finish_workout() {
+    const li = log("Daytona: summarising workout and writing next plan…", "running");
+    const r = await post("/api/finish");
+    if (r.error) {
+      li.className = "error";
+      li.textContent = r.error;
+      return `Error: ${r.error}`;
+    }
+    li.className = "done";
+    li.innerHTML = `Saved <code>${esc(r.saved.session)}</code> and <code>${esc(r.saved.plan)}</code>`;
+    showPlot(r.plots);
+    const rows = r.exercises
+      .map((e) => `<tr><td>${esc(e.exercise)}</td><td>${e.today_best_e1rm} lb${e.personal_record ? ' <span class="pr">PR</span>' : ""}</td><td>${e.next_session.sets}×${e.next_session.reps} @ ${e.next_session.weight_lb} lb</td></tr>`)
+      .join("");
+    $("summary").innerHTML = `<div class="label">Workout saved · next session planned</div><h3>${Math.round(r.total_volume_lb).toLocaleString()} lb total volume</h3><table><thead><tr><th>Lift</th><th>Best est. max</th><th>Next session</th></tr></thead><tbody>${rows}</tbody></table>`;
+    $("summary").hidden = false;
+    renderSets([]);
+    const { plots, plan_table, ...forAgent } = r;
+    return JSON.stringify(forAgent);
   },
 };
 
-// ---------- Conversation ----------
-async function startCall() {
-  startBtn.disabled = true;
-  setStatus("connecting…");
+// ---------- conversation ----------
+async function start() {
+  $("start").disabled = true;
+  $("status").textContent = "connecting…";
   try {
     await navigator.mediaDevices.getUserMedia({ audio: true });
-    fetch("/api/warmup", { method: "POST" }); // spin up the Daytona sandbox while we connect
+    fetch("/api/warmup", { method: "POST" });
     const auth = await fetch("/api/session").then(async (r) => {
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     });
-    const connection = auth.conversation_token
-      ? { conversationToken: auth.conversation_token, connectionType: "webrtc" }
-      : { signedUrl: auth.signed_url, connectionType: "websocket" };
-
     conversation = await Conversation.startSession({
-      ...connection,
+      conversationToken: auth.conversation_token,
+      connectionType: "webrtc",
       clientTools,
       onConnect: () => {
-        setStatus("live", true);
-        startBtn.textContent = "End call";
-        startBtn.disabled = false;
+        $("status").textContent = "live";
+        $("status").classList.add("live");
+        $("start").textContent = "End workout";
+        $("start").disabled = false;
       },
       onDisconnect: () => {
-        setStatus("offline");
+        $("status").textContent = "offline";
+        $("status").classList.remove("live");
         $("mode").textContent = "";
-        startBtn.textContent = "Start call";
-        startBtn.disabled = false;
+        $("start").textContent = "Start workout";
+        $("start").disabled = false;
         conversation = null;
       },
-      onError: (err) => logActivity(`Error: ${escapeHtml(String(err?.message || err))}`, "error"),
-      onModeChange: ({ mode }) => ($("mode").textContent = mode === "speaking" ? "Sam is speaking" : "listening"),
+      onError: (e) => log(`Error: ${esc(e?.message || e)}`, "error"),
+      onModeChange: ({ mode }) => ($("mode").textContent = mode === "speaking" ? "speaking" : "listening"),
       onMessage: (m) => {
         const who = m.source || m.role;
-        if (m.message) addTranscript(who === "ai" || who === "agent" ? "ai" : "user", m.message);
+        if (m.message) say(who === "ai" || who === "agent" ? "ai" : "user", m.message);
       },
     });
   } catch (e) {
-    setStatus("offline");
-    startBtn.disabled = false;
-    logActivity(`Could not start: ${escapeHtml(String(e?.message || e))}`, "error");
+    $("status").textContent = "offline";
+    $("start").disabled = false;
+    log(`Could not start: ${esc(e?.message || e)}`, "error");
   }
 }
 
-startBtn.onclick = async () => {
+$("start").onclick = async () => {
   if (conversation) {
-    startBtn.disabled = true;
+    $("start").disabled = true;
     await conversation.endSession();
-  } else {
-    startCall();
-  }
+  } else start();
 };
 
-// ---------- Explainer video: record this tab (board + agent voice + your mic) ----------
-let recorder = null;
-
-recordBtn.onclick = async () => {
-  if (recorder) {
-    recorder.stop();
-    return;
-  }
-  try {
-    const screen = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: 30 },
-      audio: true,
-      preferCurrentTab: true,
-      selfBrowserSurface: "include",
-    });
-    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const ctx = new AudioContext();
-    const mix = ctx.createMediaStreamDestination();
-    for (const s of [screen, mic]) {
-      if (s.getAudioTracks().length) ctx.createMediaStreamSource(s).connect(mix);
-    }
-    const stream = new MediaStream([...screen.getVideoTracks(), ...mix.stream.getAudioTracks()]);
-    const chunks = [];
-    recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-    recorder.onstop = () => {
-      [...screen.getTracks(), ...mic.getTracks()].forEach((t) => t.stop());
-      ctx.close();
-      const url = URL.createObjectURL(new Blob(chunks, { type: "video/webm" }));
-      const a = Object.assign(document.createElement("a"), { href: url, download: `explainer-${Date.now()}.webm` });
-      a.click();
-      logActivity(`Explainer video saved: <a href="${url}" download="explainer.webm">download again</a>`, "done");
-      recorder = null;
-      recordBtn.textContent = "● Record explainer";
-      recordBtn.classList.remove("recording");
-    };
-    screen.getVideoTracks()[0].onended = () => recorder?.state === "recording" && recorder.stop();
-    recorder.start(1000);
-    recordBtn.textContent = "■ Stop & save video";
-    recordBtn.classList.add("recording");
-    if (!screen.getAudioTracks().length) logActivity("Tip: tick 'Share tab audio' to capture Sam's voice in the video", "error");
-  } catch (e) {
-    logActivity(`Recording not started: ${escapeHtml(String(e?.message || e))}`, "error");
-    recorder = null;
-  }
-};
+fetch("/api/state").then((r) => r.json()).then((s) => renderSets(s.sets));
+if (import.meta.env.DEV) window.tools = clientTools; // try tools from the console without talking
